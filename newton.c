@@ -4,20 +4,20 @@
 #include <math.h>
 #include <unistd.h>
 
-#define max_dist 3465
-
 int main (int argc, char *argv[]) {
 	
 	// Argparse
-	int opt, t;
-	while ((opt = getopt(argc, argv, "t:")) != -1) {
+	int opt, t, l, d;
+	while ((opt = getopt(argc, argv, "t:l:")) != -1) {
 		switch (opt) {
 			case 't':
 				t = atoi(optarg);
 				break;
+			case 'l':
+				t = atoi(optarg);
+				break;
 		}
 	}
-
-
-
+	d = argv[optind];
+		
 }
