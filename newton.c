@@ -4,10 +4,16 @@
 #include <math.h>
 #include <unistd.h>
 
+/* global variable declaration */
+int t, l; // no of threads and lines
+
 int main (int argc, char *argv[]) {
-	
+
+	// Constants	
+	const float precision = 0.001;
+
 	// Argparse
-	int opt, t, l, d;
+	int opt, d;
 	while ((opt = getopt(argc, argv, "t:l:")) != -1) {
 		switch (opt) {
 			case 't':
