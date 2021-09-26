@@ -57,6 +57,10 @@ int main (int argc, char *argv[]) {
     }
     //d = argv[optind]; - vad är denna rad till för?
 
+    // FOR TESTING PURPOSES
+    t = 5;
+    l = 100;
+
     float **v = (float**) malloc(l*sizeof(float*));
     float **w = (float**) malloc(l*sizeof(float*));
     float *ventries = (float*) malloc(l*l*sizeof(float));
@@ -84,11 +88,11 @@ int main (int argc, char *argv[]) {
     int_padded status[t-2];
 
     // start up all calculation threads
-    for (int tx = 0; tx < t; tx++){
+    for (int tx = 0; tx < t-2; tx++){
 	calc_thread[tx].v = (const float**) v;
 	calc_thread[tx].w = w;
 	calc_thread[tx].ib = tx;
-	calc_thread[tx].istep = t;
+	calc_thread[tx].istep = t-2;
 	calc_thread[tx].sz = l;
 	calc_thread[tx].tx = tx;
 	calc_thread[tx].mtx = &mtx;
@@ -96,7 +100,7 @@ int main (int argc, char *argv[]) {
 	calc_thread[tx].status = status;
 	
 	status[tx].val = -1;
-
+	
 	int r = thrd_create(calc_thrds+tx, main_calc_thread, (void*) (calc_thread+tx));
 	if ( r != thrd_success ) {
 	    fprintf(stderr, "failed to create thread\n");
@@ -114,7 +118,7 @@ int main (int argc, char *argv[]) {
     
     {
 	int r;
-	thrd_join(write_thrd, &r);
+	//thrd_join(write_thrd, &r);
     }
 
     free(ventries);
@@ -138,6 +142,7 @@ int main_calc_thread(void *args){
     mtx_t *mtx = thrd_info->mtx;
     cnd_t *cnd = thrd_info->cnd;
     int_padded *status = thrd_info->status;
+   
     
     for ( int ix = ib; ix < sz; ix+=istep ) {
     
@@ -150,7 +155,7 @@ int main_calc_thread(void *args){
 	w[ix] = wix;
 	status[tx].val = ix+istep;
 	mtx_unlock(mtx);
-	cnd_signal(cnd);
+	//cnd_signal(cnd); - denna kräver någon "att signalera till"
 
     }
     
