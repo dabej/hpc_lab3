@@ -1,2 +1,2 @@
 newton : newton.c
-	-gcc -O2 newton.c -o newton
+	gcc newton.c -O2 -lpthread -lm -o newton
