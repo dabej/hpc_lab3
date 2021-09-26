@@ -32,10 +32,10 @@ typedef struct {
 
 typedef struct {
     FILE* output_file;
-    float row_to_print;
+    int* rows_to_print;
     float **w;
     mtx_t *mtx;
-    cnd_t *cnd; // tror denna är överflödig
+    cnd_t *cnd;
 } write_thread_info;
 
 int main (int argc, char *argv[]) {
@@ -55,7 +55,7 @@ int main (int argc, char *argv[]) {
 		break;
 	}
     }
-    //d = argv[optind]; - vad är denna rad till för?
+    //d = argv[optind]; - vad är denna rad till för? Någon hade skrivit dit den.
 
     // FOR TESTING PURPOSES
     t = 5;
@@ -106,24 +106,65 @@ int main (int argc, char *argv[]) {
 	    fprintf(stderr, "failed to create thread\n");
 	    exit(1);
 	}
-	// enligt videon var detach inte rekommenderat?
 	thrd_detach(calc_thrds[tx]);
     }
-    
+  
+    // create pointer to how many rows the writer should print
+    int *rows_to_print = (int*) malloc(sizeof(int)); 
+
+    // start up write thread
+    write_thread.output_file = fopen("output_file.ppx", "w");
+    write_thread.rows_to_print = rows_to_print;
+    write_thread.w = w;
+    write_thread.mtx = &mtx;
+    write_thread.cnd = &cnd;
+
+    int r = thrd_create(&write_thrd, main_write_thread, (void*) (&write_thread));
+    if ( r != thrd_success ) {
+	fprintf(stderr, "failed to create thread\n");
+	exit(1);
+    }
+
     {
 	
-	// [ check how much is computed (by looking in status's) and tell writing thread to write stuff to file ]
-	
+	// [ check how much is computed (by looking at the minimum value of all thread's status values) and tell writing thread to write stuff to file ]
+	for ( int ix = 0, ibnd; ix < l; ) {
+
+	    // wait if no new lines are available
+	    for ( mtx_lock(&mtx); ; ) {
+		// extract minimum of all status variables
+		ibnd = l;
+		for ( int tx = 0; tx < t-2; ++tx )
+		    if ( ibnd > status[tx].val )
+			ibnd = status[tx].val;
+
+		if ( ibnd <= ix ) {
+		    // we rely on spurious wake-ups
+		    printf("im waiting for a line to appear\n");
+		    cnd_wait(&cnd,&mtx);
+		} else {
+		    mtx_unlock(&mtx);
+		    break;
+		}
+
+	    }
+
+	    fprintf(stderr, "telling write thread to write until %i\n", ibnd);
+	    
+	    if (ibnd == 100) // kan detta ersättas med någonting snyggare så att evighetsloopen slutar naturligt av att comp_threadsen slutar beräkna saker?
+		break;
+	}
     }
     
     {
 	int r;
-	//thrd_join(write_thrd, &r);
+	thrd_join(write_thrd, &r);
     }
 
     free(ventries);
     free(v);
     free(w);
+    free(rows_to_print);
 
     mtx_destroy(&mtx);
     cnd_destroy(&cnd);
@@ -142,21 +183,21 @@ int main_calc_thread(void *args){
     mtx_t *mtx = thrd_info->mtx;
     cnd_t *cnd = thrd_info->cnd;
     int_padded *status = thrd_info->status;
-   
-    
+
     for ( int ix = ib; ix < sz; ix+=istep ) {
     
 	const float *vix = v[ix];
 	float *wix = (float*) malloc(sz*sizeof(float));
 
-	// perform calculation here
+	// perform calculations and update status to the highest line computed
 	
+	printf("computing line %d\n", ix);
+
 	mtx_lock(mtx);
 	w[ix] = wix;
 	status[tx].val = ix+istep;
 	mtx_unlock(mtx);
-	//cnd_signal(cnd); - denna kräver någon "att signalera till"
-
+	cnd_signal(cnd);
     }
     
     return 0;
@@ -166,12 +207,12 @@ int main_write_thread(void *args){
 
     const write_thread_info *thrd_info = (write_thread_info*) args;
     FILE *output_file = thrd_info->output_file;
-    float row_to_print;
+    int* rows_to_print = thrd_info->rows_to_print;
     float **w = thrd_info->w;
     mtx_t *mtx = thrd_info->mtx;
     cnd_t *cnd = thrd_info->cnd;
 
-    // write to file here
+    // write to file up until line rows_to_print
 
-    printf("printing row %d", row_to_print);
+    printf("printing until row %d", rows_to_print);
 }
