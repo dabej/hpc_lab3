@@ -6,7 +6,6 @@
 #include <string.h>
 #include <unistd.h>
 
-/* global variable declaration */
 int t, l; // no. of threads and lines
 
 int main_calc_thread(void *args);
@@ -32,7 +31,8 @@ typedef struct {
 
 typedef struct {
     FILE* output_file;
-    int* rows_to_print;
+    int* print_from;
+    int* print_to;
     float **w;
     mtx_t *mtx;
     cnd_t *cnd;
@@ -58,8 +58,10 @@ int main (int argc, char *argv[]) {
     //d = argv[optind]; - vad är denna rad till för? Någon hade skrivit dit den.
 
     // FOR TESTING PURPOSES
-    t = 5;
-    l = 100;
+    t = 8;
+    l = 200;
+    
+    int chunk_size = 50;
 
     float **v = (float**) malloc(l*sizeof(float*));
     float **w = (float**) malloc(l*sizeof(float*));
@@ -87,7 +89,7 @@ int main (int argc, char *argv[]) {
 
     int_padded status[t-2];
 
-    // start up all calculation threads
+    // start up calculation threads
     for (int tx = 0; tx < t-2; tx++){
 	calc_thread[tx].v = (const float**) v;
 	calc_thread[tx].w = w;
@@ -109,12 +111,15 @@ int main (int argc, char *argv[]) {
 	thrd_detach(calc_thrds[tx]);
     }
   
-    // create pointer to how many rows the writer should print
-    int *rows_to_print = (int*) malloc(sizeof(int)); 
+    // create variables needed for printing logic
+    int start_print = 0;
+    int end_print = 0;
+    int print_chunk = 0;
 
     // start up write thread
     write_thread.output_file = fopen("output_file.ppx", "w");
-    write_thread.rows_to_print = rows_to_print;
+    write_thread.print_from = &start_print;
+    write_thread.print_to = &end_print;
     write_thread.w = w;
     write_thread.mtx = &mtx;
     write_thread.cnd = &cnd;
@@ -125,9 +130,11 @@ int main (int argc, char *argv[]) {
 	exit(1);
     }
 
-    {
-	
-	// [ check how much is computed (by looking at the minimum value of all thread's status values) and tell writing thread to write stuff to file ]
+    { 
+    /* 
+     * Main loop - check the lowest line that is complete and tell writing thread to write stuff to file if a non-written block of 50 lines is done
+     */	
+
 	for ( int ix = 0, ibnd; ix < l; ) {
 
 	    // wait if no new lines are available
@@ -137,21 +144,24 @@ int main (int argc, char *argv[]) {
 		for ( int tx = 0; tx < t-2; ++tx )
 		    if ( ibnd > status[tx].val )
 			ibnd = status[tx].val;
-
 		if ( ibnd <= ix ) {
 		    // we rely on spurious wake-ups
-		    printf("im waiting for a line to appear\n");
+		    printf("main thread \t - waiting for a line to appear\n");
 		    cnd_wait(&cnd,&mtx);
 		} else {
 		    mtx_unlock(&mtx);
 		    break;
 		}
-
 	    }
 
-	    fprintf(stderr, "telling write thread to write until %i\n", ibnd);
-	    
-	    if (ibnd == 100) // kan detta ersättas med någonting snyggare så att evighetsloopen slutar naturligt av att comp_threadsen slutar beräkna saker?
+	    if (ibnd/chunk_size - start_print/chunk_size > print_chunk){
+		fprintf(stderr, "main thread \t - telling write thread to write until %i\n", ibnd);
+		
+		end_print = ibnd;
+		print_chunk++;
+	    }
+
+	    if (ibnd == l) // kan detta ersättas med någonting snyggare så att evighetsloopen slutar automatiskt i samband med att comp_threadsen slutar beräkna saker?
 		break;
 	}
     }
@@ -164,7 +174,6 @@ int main (int argc, char *argv[]) {
     free(ventries);
     free(v);
     free(w);
-    free(rows_to_print);
 
     mtx_destroy(&mtx);
     cnd_destroy(&cnd);
@@ -189,9 +198,9 @@ int main_calc_thread(void *args){
 	const float *vix = v[ix];
 	float *wix = (float*) malloc(sz*sizeof(float));
 
-	// perform calculations and update status to the highest line computed
+	// [ perform calculations and save result in w ]
 	
-	printf("computing line %d\n", ix);
+	printf("calc thread %d \t - computing line %d\n", tx, ix);
 
 	mtx_lock(mtx);
 	w[ix] = wix;
@@ -207,12 +216,23 @@ int main_write_thread(void *args){
 
     const write_thread_info *thrd_info = (write_thread_info*) args;
     FILE *output_file = thrd_info->output_file;
-    int* rows_to_print = thrd_info->rows_to_print;
+    int* print_from = thrd_info->print_from;
+    int* print_to = thrd_info->print_to;
     float **w = thrd_info->w;
     mtx_t *mtx = thrd_info->mtx;
     cnd_t *cnd = thrd_info->cnd;
 
-    // write to file up until line rows_to_print
+    // [ write lines to file from print_from until print_to ]
+    
+    for (int i=0; i<1000000; i++){// dummy for-loop to avoid starting threads that run forever now in testing stage. Replace with while(true) or something else that stays "active" and waiting for wor. Replace with while(true) or something else that stays "active" and waiting for work
+	if (*print_from < *print_to){
+	    // print the stuff to file
+	    printf("writing thread \t - printing stuff to file \n");
+	    
+	    // update "baseline" to keep printing from next time
+	    *print_from = *print_to;
+	} else
+	    rand()%10;
+    }    
 
-    printf("printing until row %d", rows_to_print);
 }
