@@ -55,13 +55,12 @@ int main (int argc, char *argv[]) {
 		break;
 	}
     }
-    //d = argv[optind]; - vad är denna rad till för? Någon hade skrivit dit den.
-
+    d = atoi(argv[optind]);
     // FOR TESTING PURPOSES
-    t = 8;
-    l = 200;
+    // t = 8;
+    // l = 200;
     
-    int chunk_size = 50;
+    int chunk_size = 5;
 
     float **v = (float**) malloc(l*sizeof(float*));
     float **w = (float**) malloc(l*sizeof(float*));
@@ -117,7 +116,8 @@ int main (int argc, char *argv[]) {
     int print_chunk = 0;
 
     // start up write thread
-    write_thread.output_file = fopen("output_file.ppx", "w");
+	FILE *fp = fopen("output_file.ppx", "w");
+    write_thread.output_file = fp;
     write_thread.print_from = &start_print;
     write_thread.print_to = &end_print;
     write_thread.w = w;
@@ -146,7 +146,7 @@ int main (int argc, char *argv[]) {
 			ibnd = status[tx].val;
 		if ( ibnd <= ix ) {
 		    // we rely on spurious wake-ups
-		    printf("main thread \t - waiting for a line to appear\n");
+		    //printf("main thread \t - waiting for a line to appear\n");
 		    cnd_wait(&cnd,&mtx);
 		} else {
 		    mtx_unlock(&mtx);
@@ -155,7 +155,7 @@ int main (int argc, char *argv[]) {
 	    }
 
 	    if (ibnd/chunk_size - start_print/chunk_size > print_chunk){
-		fprintf(stderr, "main thread \t - telling write thread to write until %i\n", ibnd);
+		//fprintf(stderr, "main thread \t - telling write thread to write until %i\n", ibnd);
 		
 		end_print = ibnd;
 		print_chunk++;
@@ -170,7 +170,7 @@ int main (int argc, char *argv[]) {
 	int r;
 	thrd_join(write_thrd, &r);
     }
-
+	fclose(fp);
     free(ventries);
     free(v);
     free(w);
@@ -200,14 +200,14 @@ int main_calc_thread(void *args){
 
 	// [ perform calculations and save result in w ]
 	
-	printf("calc thread %d \t - computing line %d\n", tx, ix);
+	//printf("calc thread %d \t - computing line %d\n", tx, ix);
 
 	mtx_lock(mtx);
 	w[ix] = wix;
 	status[tx].val = ix+istep;
 	mtx_unlock(mtx);
 	cnd_signal(cnd);
-    }
+	}
     
     return 0;
 }
@@ -223,12 +223,17 @@ int main_write_thread(void *args){
     cnd_t *cnd = thrd_info->cnd;
 
     // [ write lines to file from print_from until print_to ]
-    
+	   
+ 
     for (int i=0; i<1000000; i++){// dummy for-loop to avoid starting threads that run forever now in testing stage. Replace with while(true) or something else that stays "active" and waiting for wor. Replace with while(true) or something else that stays "active" and waiting for work
 	if (*print_from < *print_to){
-	    // print the stuff to file
+	
+		for (int ix = *print_from; ix < *print_to; ix++) {
+			free(w[ix]);
+		}   
+		 // print the stuff to file
 	    printf("writing thread \t - printing stuff to file \n");
-	    
+
 	    // update "baseline" to keep printing from next time
 	    *print_from = *print_to;
 	} else
