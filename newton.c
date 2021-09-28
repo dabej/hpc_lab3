@@ -5,8 +5,17 @@
 #include <threads.h>
 #include <string.h>
 #include <unistd.h>
+#include <complex.h>
 
-int nthrds, l; // no. of threads and lines
+int nthrds, l, d; // no. of threads and lines
+
+// Constants	
+const double low_t = 0.000001;
+const double high_t = 10000000000;
+
+double complex f(double complex x, int d);
+
+double complex f_prim(double complex x, int d);
 
 int main_calc_thread(void *args);
 
@@ -18,8 +27,8 @@ typedef struct {
 } int_padded;
 
 typedef struct {
-    const float **v;
-    float **w;
+    const double *v;
+    char **w;
     int ib;
     int istep;
     int sz;
@@ -30,41 +39,54 @@ typedef struct {
 } calc_thread_info;
 
 typedef struct {
-    float **w;
+    char **w;
     mtx_t *mtx;
     cnd_t *cnd;
     int_padded *status;
 } write_thread_info;
 
+typedef struct {
+	char s[12];
+} color;
+
+color colors[10];
+
 int main (int argc, char *argv[]) {
 
-    // Constants	
-    const float precision = 0.001;
-
     // Argparse
-    int opt, d;
+    int opt;
     while ((opt = getopt(argc, argv, "t:l:")) != -1) {
-	switch (opt) {
-	    case 't':
-		nthrds = atoi(optarg);
-		break;
-	    case 'l':
-		l = atoi(optarg);
-		break;
-	}
+		switch (opt) {
+			case 't':
+			nthrds = atoi(optarg);
+			break;
+			case 'l':
+			l = atoi(optarg);
+			break;
+		}
     }
     d = atoi(argv[optind]);
     
-    float **v = (float**) malloc(l*sizeof(float*));
-    float **w = (float**) malloc(l*sizeof(float*));
-    float *ventries = (float*) malloc(l*l*sizeof(float));
+    double *v = (double*) malloc(l*sizeof(double));
+    char **w = (char**) malloc(sizeof(char*)*l);
 
-    for ( int ix = 0, jx = 0; ix < l; ++ix, jx += l )
-		v[ix] = ventries + jx;
+	double imag = -2.;
+	double step = 4. / (l-1);
+	for (size_t i = 0; i < l; i++) {
+		v[i] = imag;
+		imag += step;
+	}
+
+	char rgb[10][12] = {"176 11 105 \n", "215 133 180\n", "105 6 63   \n", "0 128 0    \n",
+					    "127 191 127\n", "63 95 63   \n", "25 32 159  \n", "94 98 187  \n",
+					    "190 192 227\n", "0 0 0      \n"};
 	
-    for ( int ix = 0; ix < l*l; ++ix )
-        ventries[ix] = ix;
-
+	for (size_t i = 0; i < 10; i++) {
+		color c;
+		strncpy(c.s, rgb[i], 12);
+		colors[i] = c;
+	}
+	
     // create t compute threads
     thrd_t calc_thrds[nthrds];
     calc_thread_info calc_thread[nthrds];
@@ -83,7 +105,7 @@ int main (int argc, char *argv[]) {
 
     // start up calculation threads
     for (int tx = 0; tx < nthrds; tx++){
-		calc_thread[tx].v = (const float**) v;
+		calc_thread[tx].v = (const double*) v;
 		calc_thread[tx].w = w;
 		calc_thread[tx].ib = tx;
 		calc_thread[tx].istep = nthrds;
@@ -120,8 +142,6 @@ int main (int argc, char *argv[]) {
 	int r;
 	thrd_join(write_thrd, &r);
     }
-	printf("freeing rows\n");
-    free(ventries);
     free(v);
     free(w);
 
@@ -133,8 +153,8 @@ int main (int argc, char *argv[]) {
 
 int main_calc_thread(void *args){
     const calc_thread_info *thrd_info = (calc_thread_info*) args;
-    const float **v = thrd_info->v;
-    float **w = thrd_info->w;
+    const double *v = thrd_info->v;
+    char **w = thrd_info->w;
     const int ib = thrd_info->ib;
     const int istep = thrd_info->istep;
     const int sz = thrd_info->sz;
@@ -143,16 +163,50 @@ int main_calc_thread(void *args){
     cnd_t *cnd = thrd_info->cnd;
     int_padded *status = thrd_info->status;
 
+	complex double roots[d];
+	for (size_t n = 0; n < d; n++) {
+		complex double root = cosf(2*M_PI*n/d) + sinf(2*M_PI*n/d) * I;
+		roots[n] = root;
+	}
+
+	double step = 4. / (sz - 1);
+	double complex x, root;
+	double real, imag, re;
+	int cont;
+
     for ( int ix = ib; ix < sz; ix+=istep ) {
     
-		const float *vix = v[ix];
-		float *wix = (float*) malloc(sz*sizeof(float));
+		const double im = v[ix];
+		char *wix = (char*) malloc(sz*12);
 
-		// [ perform calculations and save result in w ], row by row
-		for ( int jx = 0; jx < sz; ++jx ) {
-      		wix[jx] = vix[jx];
-			//printf("computed index %f\n",wix[jx]);
+		for (size_t col = 0; col < l*12; col+=12) {
+			x = re + im * I;
+			cont = 1;
+			while (1) {
+				real = creal(x);
+				imag = cimag(x);
+				if (real*real+imag*imag < low_t || fabs(real) > high_t || fabs(imag) > high_t) {
+					strncpy(&wix[col], colors[d].s, 12);
+					break;
+				}
+				for (size_t i = 0; i < d; i++) {
+					root = roots[i];
+					real = creal(x) - creal(root);
+					imag = cimag(x) - cimag(root);
+					if (real*real+imag*imag < low_t) {
+						strncpy(&wix[col], colors[i].s, 12);
+						cont = 0;
+						break;
+					}
+				}
+				if (cont)
+					x -= f(x, d) / f_prim(x, d);
+				else
+					break;
+			}
+			re += step;
 		}
+
 		mtx_lock(mtx);
 		w[ix] = wix;
 		status[tx].val = ix+istep;
@@ -165,10 +219,11 @@ int main_calc_thread(void *args){
 
 int main_write_thread(void *args){
 
-	FILE *fp = fopen("output_file.ppx", "w");
+	FILE *fp = fopen("newton_convergence_xd.ppm", "w");
+	fprintf(fp, "%s\n%d %d\n%d\n", "P3", l, l, 255);
     
 	const write_thread_info *thrd_info = (write_thread_info*) args;
-    float **w = thrd_info->w;
+    char **w = thrd_info->w;
     mtx_t *mtx = thrd_info->mtx;
     cnd_t *cnd = thrd_info->cnd;
 	int_padded *status = thrd_info->status;	
@@ -195,21 +250,30 @@ int main_write_thread(void *args){
 
     	}
 
-    	fprintf(stderr, "done with computation until row %i\n", ibnd);
-
    		// WRITING TO FILE BELOW, ROW BY ROW
 		for ( ; ix < ibnd; ++ix ) {
-   			printf("writing row %d to string\n",ix);
+			fwrite(w[ix], 12, l, fp);	
 			free(w[ix]);
-			}
+		}
 
-		/*if (ix == l){
-			printf("exiting..");
-			fclose(fp);
-			exit(1);
-   		}*/
 	}
 	fclose(fp);
   	
 	return 0;
+}
+
+double complex f(double complex x, int d) {
+	double complex result = x;
+	for (size_t i = 1; i < d; i++)
+		result *= x;
+	result -= 1;
+	return result;
+}
+
+double complex f_prim(double complex x, int d) {
+	double complex result = x;
+	for (size_t i = 2; i < d; i++)
+		result *= x;
+	result *= d;
+	return result;
 }
