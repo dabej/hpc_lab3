@@ -4,10 +4,15 @@
 #include <math.h>
 #include <unistd.h>
 #include <complex.h>
+#include <string.h>
 
 double complex f(double complex x, int exp);
 
 double complex f_prim(double complex x, int exp);
+
+struct color {
+	char s[12];
+};
 
 int main (int argc, char *argv[]) {
 	int opt, t, l, exp;
@@ -23,26 +28,19 @@ int main (int argc, char *argv[]) {
 	}
 	exp = atoi(argv[3]);
 	double iter_len = 4. / (l - 1);
-	unsigned char *picture_data = (unsigned char*) malloc(6*l*l);
-	unsigned char **picture = (unsigned char**) malloc(sizeof(unsigned char*)*l);
-	for (size_t i = 0, j = 0; i < l; i++, j+=l*6)
+	char *picture_data = (char*) malloc(12*l*l);
+	char **picture = (char**) malloc(sizeof(char*)*l);
+	for (size_t i = 0, j = 0; i < l; i++, j+=l*12)
 		picture[i] = picture_data + j;
 
-	unsigned char colors[10][6];
-	colors[0][0] = 176; colors[0][2] = 11; colors[0][4] = 105;
-	colors[1][0] = 215; colors[1][2] = 133; colors[1][4] = 180;
-	colors[2][0] = 105; colors[2][2] = 6; colors[2][4] = 63;
-	colors[3][0] = 0; colors[3][2] = 128; colors[3][4] = 0;
-	colors[4][0] = 127; colors[4][2] = 191; colors[4][4] = 127;
-	colors[5][0] = 63; colors[5][2] = 95; colors[5][4] = 63;
-	colors[6][0] = 25; colors[6][2] = 32; colors[6][4] = 159;
-	colors[7][0] = 94; colors[7][2] = 98; colors[7][4] = 187;
-	colors[8][0] = 190; colors[8][2] = 192; colors[8][4] = 227;
-	colors[9][0] = 0; colors[9][2] = 0; colors[9][4] = 0;
+	char rgb[10][12] = {"176 11 105 \n", "215 133 180\n", "105 6 63   \n", "0 128 0    \n",
+							  "127 191 127\n", "63 95 63   \n", "25 32 159  \n", "94 98 187  \n",
+							  "190 192 227\n", "0 0 0      \n"};
+	struct color colors[10];
 	for (size_t i = 0; i < 10; i++) {
-		colors[i][1] = ' ';
-		colors[i][3] = ' ';
-		colors[i][5] = '\n';
+		struct color c;
+		strncpy(c.s, rgb[i], 12);
+		colors[i] = c;
 	}
 
 	complex double roots[exp];
@@ -56,6 +54,9 @@ int main (int argc, char *argv[]) {
 	double time;
 	timespec_get(&start_time, TIME_UTC);
 
+	FILE *fp = fopen("newton_convergence_xd.ppm", "w");
+	fprintf(fp, "%s\n%d %d\n%d\n", "P3", l, l, 255);
+
 	double complex x, root;
 	double real, imag, re;
 	double im = -2.;
@@ -64,14 +65,14 @@ int main (int argc, char *argv[]) {
 	double high_t = 10000000000.;
 	for (size_t row = 0; row < l; row++) {
 		re = -2.;
-		for (size_t col = 0; col < l*6; col+=6) {
+		for (size_t col = 0; col < l*12; col+=12) {
 			x = re + im * I;
 			cont = 1;
 			while (1) {
 				real = creal(x);
 				imag = cimag(x);
 				if (real*real+imag*imag < low_t || fabs(real) > high_t || fabs(imag) > high_t) {
-					picture[row][col] = *colors[exp];
+					strncpy(&picture[row][col], colors[exp].s, 12);
 					break;
 				}
 				for (size_t i = 0; i < exp; i++) {
@@ -79,7 +80,7 @@ int main (int argc, char *argv[]) {
 					real = creal(x) - creal(root);
 					imag = cimag(x) - cimag(root);
 					if (real*real+imag*imag < low_t) {
-						picture[row][col] = *colors[i];
+						strncpy(&picture[row][col], colors[i].s, 12);
 						cont = 0;
 						break;
 					}
@@ -89,16 +90,14 @@ int main (int argc, char *argv[]) {
 				else
 					break;
 			}
-			//printf("%.4f %+.4fi, abs_val: %.4f\n", creal(x), cimag(x), abs_val_2);
 			re += iter_len;
 		}
 		im += iter_len;
 	}
 
-	FILE *fp = fopen("newton_convergence_xd.ppm", "w");
-	fprintf(fp, "%s\n%d %d\n%c\n", "P3", l, l, 255);
-	fwrite(picture_data, 6, l*l, fp);
+	fwrite(picture_data, 12, l*l, fp);
 
+	fclose(fp);
 	free(picture);
 	free(picture_data);
 
