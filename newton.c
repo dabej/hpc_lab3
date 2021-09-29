@@ -178,6 +178,7 @@ int main_calc_thread(void *args){
     
 		const double im = v[ix];
 		char *wix = (char*) malloc(sz*12);
+		re = -2.;
 
 		for (size_t col = 0; col < l*12; col+=12) {
 			x = re + im * I;
