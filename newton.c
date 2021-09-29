@@ -242,10 +242,22 @@ int main_write_thread(void *args){
 		colors[i] = c;
 	}
 
+	color grays[256];
+	for (size_t i = 0; i < 30; i++) {
+		color c;
+		int k = (int)(256./30*i);
+		sprintf(c.s, "%03d %03d %03d\n", k, k, k);
+		grays[i] = c;
+	}
+	color white;
+	sprintf(white.s, "255 255 255\n");
+	for (size_t i = 30; i < 256; i++)
+		grays[i] = white;
+
 	FILE *fp_a = fopen("newton_attractors_xd.ppm", "w");
 	FILE *fp_c = fopen("newton_convergence_xd.ppm", "w");
 	fprintf(fp_a, "%s\n%d %d\n%d\n", "P3", l, l, 255);
-	fprintf(fp_c, "%s\n%d %d\n%d\n", "P2", l, l, 255);
+	fprintf(fp_c, "%s\n%d %d\n%d\n", "P3", l, l, 255);
     
 	const write_thread_info *thrd_info = (write_thread_info*) args;
     TYPE_ATTR **a = thrd_info->a;
@@ -285,9 +297,9 @@ int main_write_thread(void *args){
 			free(a[ix]);
 			fwrite(buffer, 12, l, fp_a);
 			for (size_t i = 0; i < l; i++)
-				strcpy(&buffer[i*4], "150\n");//"%d\n", c[ix][i]);
+				strncpy(&buffer[i*12], grays[c[ix][i]].s, 12);
 			free(c[ix]);
-			fwrite(buffer, 4, l, fp_c);
+			fwrite(buffer, 12, l, fp_c);
 		}
 
 	}
