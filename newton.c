@@ -53,6 +53,11 @@ color colors[10];
 
 int main (int argc, char *argv[]) {
 
+	struct timespec start_time;
+	struct timespec end_time;
+	double time;
+	timespec_get(&start_time, TIME_UTC);
+
     // Argparse
     int opt;
     while ((opt = getopt(argc, argv, "t:l:")) != -1) {
@@ -148,6 +153,11 @@ int main (int argc, char *argv[]) {
     mtx_destroy(&mtx);
     cnd_destroy(&cnd);
 
+	timespec_get(&end_time, TIME_UTC);
+	time = difftime(end_time.tv_sec, start_time.tv_sec) +
+					(end_time.tv_nsec - start_time.tv_nsec) / 1000000000.;
+
+	printf("Runtime: %f\n", time);
     return 0;
 }
 
@@ -264,16 +274,16 @@ int main_write_thread(void *args){
 }
 
 double complex f(double complex x, int d) {
-	double complex result = x;
-	for (size_t i = 1; i < d; i++)
+	double complex result = 1;
+	for (size_t i = 0; i < d; i++)
 		result *= x;
 	result -= 1;
 	return result;
 }
 
 double complex f_prim(double complex x, int d) {
-	double complex result = x;
-	for (size_t i = 2; i < d; i++)
+	double complex result = 1;
+	for (size_t i = 1; i < d; i++)
 		result *= x;
 	result *= d;
 	return result;
